@@ -20,7 +20,7 @@ fun watch(fn, cb)
   })
   ret null
 
-ret fun use(names, parent_mod)
+fun link(names, parent_mod, opts)
   //parent_mod = parent_mod || global_mod
   //if (typeof opts == 'undefined') opts = {}
   //opts = opts = {}
@@ -32,12 +32,32 @@ ret fun use(names, parent_mod)
       let mod = modsys.add(fn, {code,export_names}, parent_mod, {
         inject_ctx: patcher.create_inject_context(fn),
         inject: 'function use(name){global.use(name,__mod)}',
+        method: opts.method
       })
       /*modsys.add(fn, ws.read(fn), parent_mod, {
         inject: 'function use(name){global.use(name,__mod)}'
       })*/
       watch(fn, fun(fn){
-        let {code, export_names} = ws.read(fn)
-        patcher.update_module(fn, code)
-        modsys.update(fn, {code,export_names})
+        if opts && opts.restart
+          process.exit(8)
+        else
+          let {code, export_names} = ws.read(fn)
+          patcher.update_module(fn, code)
+          modsys.update(fn, {code,export_names})
       })
+
+export fun use(names, parent, opts)
+  if parent && !('name' in parent)
+    opts = parent
+    parent = null
+  opts = opts || {}
+  opts.method = 'use'
+  ret link(names, parent, opts)
+
+export fun include(names, parent, opts)
+  if parent && !('name' in parent)
+    opts = parent
+    parent = null
+  opts = opts || {}
+  opts.method = 'include'
+  ret link(names, parent, opts)

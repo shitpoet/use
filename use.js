@@ -1,4 +1,6 @@
-module.exports = global.use = require('ws').run(__dirname+'/use.ws')
+module.exports = require('ws').load(__dirname+'/use.ws')
+global.use = module.exports.use
+global.include = module.exports.include
 
 
 

@@ -7,13 +7,13 @@
 
 */
 
-let _logging = true
+/*let _logging = true
 let _timing = false
 
 function log(...args) { if (_logging) console.log(...args) }
 let l = log
 function time(...args) { if (_timing) console.time(...args) }
-function timeEnd(...args) { if (_timing) console.timeEnd(...args) }
+function timeEnd(...args) { if (_timing) console.timeEnd(...args) }*/
 
 let Module = require('module')
 let path = require('path')
@@ -31,8 +31,11 @@ let Mod = fun(name, ctx)
     set_var: fun(name, value)
       this.ctx[name] = value
     ,
-    update_var: fun(fn, name, expr)
-      this.eval(fn, name+' = '+expr)
+    update_var: fun(name, expr)
+      this.eval(name+' = '+expr)
+    ,
+    add_function: fun(name, code)
+      this.ctx[name] = this.eval('('+code+')')
     ,
   }
 
@@ -53,6 +56,9 @@ fun wrap(code, inject)
   ret code
 
 fun wo_ext(fn)
+  ret get_file_name(fn).split('.').shift()
+
+fun get_file_name(fn)
   ret fn.split('/').pop()
 
 fun create_script(name, code)
@@ -84,7 +90,8 @@ fun bind_export(mod, parent, exp_name)
   //if (!(exp_name in parent_ctx)) {
   //if (!Object.hasOwnProperty(parent_ctx, exp_name)) {
   //if (  Object.keys(parent_ctx).indexOf(exp_name)<0  ) {
-  log(colors.green("bind ") + name + '.' + exp_name + ' to ' + parent.name)
+
+  //log(colors.green("bind ") + name + '.' + exp_name + ' to ' + parent.name)
   //log(colors.green("bind ") + name + '.' + exp_name + ' to ' + parent_name+' val '+$__modules[name].context[exp_name])
 
   try
@@ -93,13 +100,13 @@ fun bind_export(mod, parent, exp_name)
       configurable: true,
       //configurable: ' assert fs '.indexOf(' '+exp_name+' ')>=0,
       get: function() {
-        log(colors.blue('read ')+name+'.'+exp_name+' from '+parent.name)
+        //log(colors.blue('read ')+name+'.'+exp_name+' from '+parent.name)
         let val = mod.ctx[exp_name]
         //log(colors.gray(''+val))
         return val
       },
       set: function(val) {
-        log(colors.red('write ')+name+'.'+exp_name+colors.gray('='+val)+' from '+parent.name)
+        //log(colors.red('write ')+name+'.'+exp_name+colors.gray('='+val)+' from '+parent.name)
         mod.ctx[exp_name] = val
       },
     })
@@ -108,9 +115,44 @@ fun bind_export(mod, parent, exp_name)
     console.error(e)
     console.error( Object.getOwnPropertyDescriptor(global, 'log') )
 
+fun bind_exports(mod, parent)
+  //let parent_name = parent.name || '(global)'
+  for exp_name of mod.export_names
+    bind_export(mod, parent, exp_name)
+
+fun bind_as_object(mod, parent)
+  let obj_name = wo_ext(mod.name)
+  log('bind as object '+obj_name+' to '+parent.name)
+  /*let mod_obj = new Proxy({}, {
+    get: function(obj, prop) {
+      //log(colors.blue('read ')+name+'.'+exp_name+' from '+parent.name)
+      ret mod.ctx[prop]
+      //log(colors.gray(''+val))
+    },
+    set: function(obj, prop, val) {
+      mod.ctx[prop] = val
+    }
+  })*/
+  Object.defineProperty(parent.ctx, obj_name, {
+    enumerable: true,
+    configurable: true,
+    get: fun() {
+      ret mod.ctx
+    },
+  })
+
 export fun resolve(name, parent)
   let fn = name+'.js'
-  ret fn
+  if fs.existsSync(fn)
+    ret fn
+  let home = process.env.HOME
+  let modfn = home+'/mod/'+fn
+  if fs.existsSync(modfn)
+    ret modfn
+  modfn = home+'/mod/'+name+'/'+fn
+  if fs.existsSync(modfn)
+    ret modfn
+  throw new Error('cant find '+name)
 
 export fun find(name)
   ret mods[name]
@@ -135,14 +177,18 @@ export fun add(name, ws, parent, opts)
   else
     log(name+' is cached');
 
-  // bind variables
+  // bind
+  log('bind')
   let parents = mod.parents
   if parents.indexOf(parent) < 0
     parents.push( parent )
   for parent of parents
-    let parent_name = parent.name || '(global)'
-    for exp_name of mod.export_names
-      bind_export(mod, parent, exp_name)
+    if opts.method == 'include'
+      log('bind - include')
+      bind_exports(mod, parent)
+    else
+      log('bind - use')
+      bind_as_object(mod, parent)
 
   ret mod
 
