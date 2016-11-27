@@ -13,7 +13,7 @@ chokidar.watch([__filename, '*.ws', 'm2.js', '../spur/spur.ws']).on('change', fu
 require('cought')
 let ws = require('ws')
 require('./use.js')
-include('log')
+//include('log')
 
 global.E = {}
 for (let name in global.M) {
@@ -30,7 +30,12 @@ if (reverse) {
   [expect_1, expect_2] = [expect_2, expect_1];
 }
 
-use('m1', {restart: true})
+//use('m1')
+//m1.foo()
+
+include('m1')
+//foo()
+
 //include('m1', {restart: true})
 
 //foo()

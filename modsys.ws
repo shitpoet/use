@@ -15,16 +15,19 @@ let l = log
 function time(...args) { if (_timing) console.time(...args) }
 function timeEnd(...args) { if (_timing) console.timeEnd(...args) }*/
 
+//let log = function(){}////////////
+
 let Module = require('module')
 let path = require('path')
 let fs = require('fs')
 let vm = require('vm')
 let colors = require('colors/safe')
 
-let Mod = fun(name, ctx)
+let Mod = fun(name, fn, ctx)
   ret {
-    name,
-    ctx: ctx || {require, __dirname},
+    name, fn,
+    //ctx: ctx || {require, __dirname},
+    ctx: ctx || {},
     export_names: [],
     parents: [],
     opts: {},
@@ -42,11 +45,11 @@ let Mod = fun(name, ctx)
 let mods = {}
 global.M = mods
 //global.global_mod = new_module('(global)', global)
-global.global_mod = new Mod('(global)', global)
+global.global_mod = new Mod('(global)', require.main.filename, global)
 
 fun wrap(code, inject)
   code =
-    '(function(__mod){with(__ctx=__mod.ctx){' +
+    '(function(require,__mod,__dirname){var __ctx=__mod.ctx;with(__ctx){' +
     "'use strict';" +
     code +
     ";__mod.eval=(code)=>eval(code)" +
@@ -56,9 +59,9 @@ fun wrap(code, inject)
   ret code
 
 fun wo_ext(fn)
-  ret get_file_name(fn).split('.').shift()
+  ret wo_dir(fn).split('.').shift()
 
-fun get_file_name(fn)
+fun wo_dir(fn)
   ret fn.split('/').pop()
 
 fun create_script(name, code)
@@ -68,9 +71,9 @@ fun create_script(name, code)
     console.error(colors.red(wo_ext(fn)+': module compilation error'))
     console.error(e)
 
-fun run_script(name, script, mod)
+fun run_script(name, fn, script, mod)
   try
-    ret script.runInThisContext()(mod)
+    ret script.runInThisContext()(require, mod, path.dirname(fn))
   catch (e)
     console.error(colors.red(wo_ext(name)+': module execution error'))
     console.error(e)
@@ -91,8 +94,8 @@ fun bind_export(mod, parent, exp_name)
   //if (!Object.hasOwnProperty(parent_ctx, exp_name)) {
   //if (  Object.keys(parent_ctx).indexOf(exp_name)<0  ) {
 
-  //log(colors.green("bind ") + name + '.' + exp_name + ' to ' + parent.name)
-  //log(colors.green("bind ") + name + '.' + exp_name + ' to ' + parent_name+' val '+$__modules[name].context[exp_name])
+  log(colors.green("bind ") + name + '.' + exp_name + ' to ' + parent.name)
+  //log(colors.green("bind ") + name + '.' + exp_name + ' to ' + parent.name+' val '+mod.ctx[exp_name])
 
   try
     Object.defineProperty(parent.ctx, exp_name, {
@@ -100,13 +103,13 @@ fun bind_export(mod, parent, exp_name)
       configurable: true,
       //configurable: ' assert fs '.indexOf(' '+exp_name+' ')>=0,
       get: function() {
-        //log(colors.blue('read ')+name+'.'+exp_name+' from '+parent.name)
+        //console.log(colors.blue('read ')+name+'.'+exp_name+' from '+parent.name)
         let val = mod.ctx[exp_name]
-        //log(colors.gray(''+val))
+        //console.log(colors.gray(''+val))
         return val
       },
       set: function(val) {
-        //log(colors.red('write ')+name+'.'+exp_name+colors.gray('='+val)+' from '+parent.name)
+        //console.log(colors.red('write ')+name+'.'+exp_name+colors.gray('='+val)+' from '+parent.name)
         mod.ctx[exp_name] = val
       },
     })
@@ -122,7 +125,7 @@ fun bind_exports(mod, parent)
 
 fun bind_as_object(mod, parent)
   let obj_name = wo_ext(mod.name)
-  log('bind as object '+obj_name+' to '+parent.name)
+  log(colors.green('bind as object ')+obj_name+' to '+parent.name)
   /*let mod_obj = new Proxy({}, {
     get: function(obj, prop) {
       //log(colors.blue('read ')+name+'.'+exp_name+' from '+parent.name)
@@ -142,52 +145,64 @@ fun bind_as_object(mod, parent)
   })
 
 export fun resolve(name, parent)
+  parent = parent || global_mod
+  log('resolve '+name+' from '+parent.name+' ('+parent.fn+')')
   let fn = name+'.js'
-  if fs.existsSync(fn)
-    ret fn
+  let r = path.dirname(parent.fn)+'/'+fn
+  log('try '+r)
+  if fs.existsSync(r)
+    ret r
   let home = process.env.HOME
-  let modfn = home+'/mod/'+fn
-  if fs.existsSync(modfn)
-    ret modfn
-  modfn = home+'/mod/'+name+'/'+fn
-  if fs.existsSync(modfn)
-    ret modfn
+  r = home+'/mod/'+fn
+  log('try '+r)
+  if fs.existsSync(r)
+    ret r
+  r = home+'/mod/'+name+'/'+fn
+  log('try '+r)
+  if fs.existsSync(r)
+    ret r
   throw new Error('cant find '+name)
 
-export fun find(name)
-  ret mods[name]
+export fun find(fn)
+  ret mods[fn]
 
-export fun add(name, ws, parent, opts)
+export fun add(name, fn, ws, parent, opts)
   parent = parent || global_mod
   if (name == parent.name)
     throw new Error('module '+name+' uses itself')
   log('use '+name+' from '+parent.name)
-  let mod = mods[name]
+  let mod = mods[fn]
   if !mod
     //mod = new_module(name)
-    mod = mods[name] = new Mod(name, opts.ctx)
+    mod = mods[fn] = new Mod(name, fn)
     mod.export_names = ws.export_names
     mod.opts = opts
     if opts.inject_ctx
       for name in opts.inject_ctx
         mod.ctx[name] = opts.inject_ctx[name]
+    //mod.code = ws.code
     let code = wrap(ws.code, opts.inject)
+    //mod.wrapped_code = code
     let script = create_script(name, code)
-    if (script) run_script(name, script, mod)
+    if script
+      run_script(name, fn, script, mod)
+    else
+      log('script wasnt comipiled')
   else
     log(name+' is cached');
+    //log(mod)
 
   // bind
-  log('bind')
+  //log('bind')
   let parents = mod.parents
   if parents.indexOf(parent) < 0
     parents.push( parent )
   for parent of parents
     if opts.method == 'include'
-      log('bind - include')
+      //log('bind / include - to '+parent.name)
       bind_exports(mod, parent)
     else
-      log('bind - use')
+      //log('bind / use - to '+parent.name)
       bind_as_object(mod, parent)
 
   ret mod

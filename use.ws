@@ -6,8 +6,8 @@
 let chokidar = require('chokidar')
 let ws = require('ws')
 //let modsys = ws.run('modsys.ws')
-let modsys = ws.load('modsys.ws')
-let patcher = ws.load('../spur/spur.ws')
+let modsys = ws.load(__dirname+'/modsys.ws')
+let patcher = ws.load('../../lab/spur/spur.ws')
 patcher.init(modsys)
 
 global.__modsys = modsys // debug
@@ -29,9 +29,12 @@ fun link(names, parent_mod, opts)
     if !(modsys.find(fn))
       let {code, export_names} = ws.read(fn)
       code = patcher.rewrite_module(fn, code)
-      let mod = modsys.add(fn, {code,export_names}, parent_mod, {
+      let mod = modsys.add(name, fn, {code,export_names}, parent_mod, {
         inject_ctx: patcher.create_inject_context(fn),
-        inject: 'function use(name){global.use(name,__mod)}',
+        inject:
+          'function include(name){global.include(name,__mod)};'+
+          'function use(name){global.use(name,__mod)};'
+        ,
         method: opts.method
       })
       /*modsys.add(fn, ws.read(fn), parent_mod, {
