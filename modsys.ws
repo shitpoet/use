@@ -26,23 +26,25 @@ let colors = require('colors/safe')
 let Mod = fun(name, fn, ctx)
   ret {
     name, fn,
-    //ctx: ctx || {require, __dirname},
     ctx: ctx || {},
     export_names: [],
     parents: [],
     opts: {},
-    set_var: fun(name, value)
-      this.ctx[name] = value
-    ,
-    update_var: fun(name, expr)
-      this.eval(name+' = '+expr)
-    ,
-    add_function: fun(name, code)
-      this.ctx[name] = this.eval('('+code+')')
-    ,
   }
 
-let mods = {}
+Mod.prototype = {
+  set_var: fun(name, value)
+    this.ctx[name] = value
+  ,
+  update_var: fun(name, expr)
+    this.eval(name+' = '+expr)
+  ,
+  add_function: fun(name, code)
+    this.ctx[name] = this.eval('('+code+')')
+  ,
+}
+
+export let mods = {}
 global.M = mods
 //global.global_mod = new_module('(global)', global)
 global.global_mod = new Mod('(global)', require.main.filename, global)
@@ -53,7 +55,7 @@ fun wrap(code, inject)
     "'use strict';" +
     code +
     ";__mod.eval=(code)=>eval(code)" +
-    ";"+inject +
+    //";"+inject +
     '}})'
   //log(code)
   ret code
@@ -64,28 +66,23 @@ fun wo_ext(fn)
 fun wo_dir(fn)
   ret fn.split('/').pop()
 
-fun create_script(name, code)
+fun create_script(mod, name, fn, code)
   try
-    ret new vm.Script(code, {filename: name, displayErrors: true})
+    ret new vm.Script(code, {filename: wo_dir(fn), displayErrors: true})
   catch (e)
-    console.error(colors.red(wo_ext(fn)+': module compilation error'))
+    console.error(colors.red(wo_dir(fn)+': module compilation error'))
     console.error(e)
+    if mod.opts.fatal
+      process.exit(1)
 
-fun run_script(name, fn, script, mod)
+fun run_script(mod, name, fn, script)
   try
-    ret script.runInThisContext()(require, mod, path.dirname(fn))
+    ret script.runInThisContext()(require.main.require, mod, path.dirname(fn))
   catch (e)
-    console.error(colors.red(wo_ext(name)+': module execution error'))
+    console.error(colors.red(wo_dir(fn)+': module execution error'))
     console.error(e)
-
-/*fun new_module(name, ctx)
-  ret {
-    name,
-    ctx: ctx || {require, __dirname},
-    export_names: [],
-    parents: [],
-    opts: {}
-  }*/
+    if mod.opts.fatal
+      process.exit(2)
 
 fun bind_export(mod, parent, exp_name)
   let name = mod.name
@@ -146,19 +143,19 @@ fun bind_as_object(mod, parent)
 
 export fun resolve(name, parent)
   parent = parent || global_mod
-  log('resolve '+name+' from '+parent.name+' ('+parent.fn+')')
+  //log('resolve '+name+' from '+parent.name+' ('+parent.fn+')')
   let fn = name+'.js'
   let r = path.dirname(parent.fn)+'/'+fn
-  log('try '+r)
+  //log('try '+r)
   if fs.existsSync(r)
     ret r
   let home = process.env.HOME
   r = home+'/mod/'+fn
-  log('try '+r)
+  //log('try '+r)
   if fs.existsSync(r)
     ret r
   r = home+'/mod/'+name+'/'+fn
-  log('try '+r)
+  //log('try '+r)
   if fs.existsSync(r)
     ret r
   throw new Error('cant find '+name)
@@ -166,57 +163,48 @@ export fun resolve(name, parent)
 export fun find(fn)
   ret mods[fn]
 
-export fun add(name, fn, ws, parent, opts)
+export fun add(name, fn, code, export_names, ctx, parent, opts)
   parent = parent || global_mod
   if (name == parent.name)
     throw new Error('module '+name+' uses itself')
-  log('use '+name+' from '+parent.name)
+  if opts.method != 'include'
+    opts.method = 'use'
+  log(colors.magenta(opts.method)+' '+name+' from '+parent.name)
   let mod = mods[fn]
   if !mod
     //mod = new_module(name)
-    mod = mods[fn] = new Mod(name, fn)
-    mod.export_names = ws.export_names
+    mod = mods[fn] = new Mod(name, fn, ctx)
+    mod.export_names = export_names
     mod.opts = opts
-    if opts.inject_ctx
+    /*if opts.inject_ctx
       for name in opts.inject_ctx
-        mod.ctx[name] = opts.inject_ctx[name]
+        mod.ctx[name] = opts.inject_ctx[name]*/
     //mod.code = ws.code
-    let code = wrap(ws.code, opts.inject)
+    code = wrap(code, opts.inject)
     //mod.wrapped_code = code
-    let script = create_script(name, code)
+    //log(code)
+    let script = create_script(mod, name, fn, code)
     if script
-      run_script(name, fn, script, mod)
+      run_script(mod, name, fn, script)
     else
       log('script wasnt comipiled')
   else
     log(name+' is cached');
     //log(mod)
+  ret mod
 
-  // bind
+export fun bind(mod, parent)
   //log('bind')
+  parent = parent || global_mod
   let parents = mod.parents
   if parents.indexOf(parent) < 0
     parents.push( parent )
-  for parent of parents
-    if opts.method == 'include'
+    if mod.opts.method == 'include'
       //log('bind / include - to '+parent.name)
       bind_exports(mod, parent)
     else
       //log('bind / use - to '+parent.name)
       bind_as_object(mod, parent)
 
-  ret mod
-
-//todo: refactor following funcs to mod.methods ?
-
-export fun update(fn, ws, parent)
+export fun update(fn, code, export_names, parent)
   ret null // do nothing
-
-/*export fun mod_eval(fn, code)
-  ret mods[fn].eval(code)
-
-/*export fun set_mod_var(fn, name, value)
-  mods[fn].__ctx[name] = value
-
-/*export fun update_var(fn, name, expr)
-  mod_eval(fn, name+' = '+expr)*/

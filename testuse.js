@@ -34,7 +34,7 @@ if (reverse) {
 //m1.foo()
 
 include('m1')
-//foo()
+foo()
 
 //include('m1', {restart: true})
 
