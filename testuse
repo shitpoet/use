@@ -1,0 +1,22 @@
+#!/bin/bash
+
+restart=true
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+while $restart; do
+  echo '------------------------------------'
+  #debug_port=$((1024+RANDOM))
+  #node -i --harmony_shipping --harmony_destructuring_assignment --debug=$debug_port --expose_debug_as=v8debug ./main.js "$@"
+  #node --harmony_shipping --harmony_destructuring_assignment --debug=$debug_port --expose_debug_as=v8debug test.js
+  node --harmony_shipping --harmony_destructuring_assignment testuse.js
+  OUT=$?
+  #echo "exit code: $OUT"
+  if [ $OUT -eq 8 ];then
+    restart=true
+  else
+    restart=false
+  fi
+done
+
+inotifywait -qq -e modify $0 *.js *.ws ~/lab/spur/*.ws
+echo '====================================='
+. $0
